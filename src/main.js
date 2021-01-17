@@ -22,5 +22,6 @@ auth.onAuthStateChanged(user => {
     store.dispatch('fetchUserProfile', user)
     store.dispatch('fetchUserPosts', user)
     store.dispatch('fetchUserCategories')
+    store.dispatch('fetchUserYears')
   }
 })

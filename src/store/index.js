@@ -2,6 +2,7 @@ import Vue from 'vue'
 import Vuex from 'vuex'
 import * as fb from '../firebase'
 import router from '../router/index'
+import DatesUtilities from '@/utilities/dates.js'
 
 Vue.use(Vuex)
 
@@ -22,12 +23,14 @@ Vue.use(Vuex)
 var postsListenerUnsubscribe = function () {};
 var incomingCategoriesListenerUnsubscribe = function () {};
 var outgoingCategoriesListenerUnsubscribe = function () {};
+var yearsListenerUnsubscribe = function () {};
 
 
 const store = new Vuex.Store({
   state: {
     userProfile: {},
     posts: [],
+    years: [],
     incomingCategories: [],
     outgoingCategories: []
   },
@@ -46,6 +49,9 @@ const store = new Vuex.Store({
     },
     setOutgoingCategories(state, val) {
       state.outgoingCategories = val
+    },
+    setYears(state, val) {
+      state.years = val
     }
   },
   actions: {
@@ -69,6 +75,7 @@ const store = new Vuex.Store({
       dispatch('fetchUserProfile', user)
       dispatch('fetchUserPosts', user)
       dispatch('fetchUserCategories')
+      dispatch('fetchUserYears')
     },
 
     async signup({ dispatch }, form) {
@@ -162,6 +169,26 @@ const store = new Vuex.Store({
       })
     },
 
+    async likePost ({ commit }, post) {
+      const userId = fb.auth.currentUser.uid
+      const docId = `${userId}_${post.id}`
+
+      // check if user has liked post
+      const doc = await fb.likesCollection.doc(docId).get()
+      if (doc.exists) { return }
+
+      // create post
+      await fb.likesCollection.doc(docId).set({
+        postId: post.id,
+        userId: userId
+      })
+
+      // update post likes count
+      fb.postsCollection.doc(post.id).update({
+        likes: post.likesCount + 1
+      })
+    },
+
     async createCategory({ state, commit }, category) {
 
       const userId = fb.auth.currentUser.uid
@@ -238,25 +265,86 @@ const store = new Vuex.Store({
 
     },
 
-    async likePost ({ commit }, post) {
+    async createTransaction({ dispatch, state }, transaction) {
+
       const userId = fb.auth.currentUser.uid
-      const docId = `${userId}_${post.id}`
+      const transactionYear = transaction.date.getFullYear()
+      const transactionMonth = transaction.date.getMonth() + 1
+      const yearRefId = '' + transactionYear
+      const monthRefId = '' + transactionMonth
 
-      // check if user has liked post
-      const doc = await fb.likesCollection.doc(docId).get()
-      if (doc.exists) { return }
+      // Create the year record if it doesn't already exist
+      let yearRef = await fb.usersCollection.doc(userId)
+        .collection('years').doc(yearRefId)
+        .get()
 
-      // create post
-      await fb.likesCollection.doc(docId).set({
-        postId: post.id,
-        userId: userId
+      if (!yearRef.exists) {
+        
+        await fb.usersCollection.doc(userId).collection('years').doc(yearRefId).set({
+          name : transactionYear
+        })
+
+        dispatch('fetchUserYears')
+
+      }
+
+      //  Create the month record if it doesn't already exist
+      let monthRef = await fb.usersCollection.doc(userId)
+        .collection('years').doc(yearRefId)
+        .collection('months').doc(monthRefId)
+        .get()
+
+      if (!monthRef.exists) {
+
+        await fb.usersCollection.doc(userId)
+          .collection('years').doc(yearRefId)
+          .collection('months').doc(monthRefId)
+          .set({
+            name: DatesUtilities.getMonthName(transaction.date)
+        })
+
+      }
+
+      // Finally we can create the transaction
+      await fb.usersCollection.doc(userId)
+          .collection('years').doc(yearRefId)
+          .collection('months').doc(monthRefId)
+          .collection(transaction.transactionType).add({
+            date: transaction.date,
+            categoryId: transaction.categoryId,
+            amount: transaction.amount,
+            note: '' +  transaction.note
+          })
+
+    },
+
+    async fetchUserYears({ commit }) {
+
+      // Kill existing listener if there is one
+      yearsListenerUnsubscribe()
+
+      const userId = fb.auth.currentUser.uid
+
+      // create a listener
+      yearsListenerUnsubscribe = fb.usersCollection.doc(userId).collection('years')
+        .orderBy('name', 'asc')
+        .onSnapshot(snapshot => {
+
+        let yearsArray = []
+
+        snapshot.forEach(doc => {
+          let year = doc.data()
+          year.id = doc.id
+      
+          yearsArray.push(year)
+        })
+
+        console.log('fetchUserYears', yearsArray);
+
+        store.commit('setYears', yearsArray)
       })
 
-      // update post likes count
-      fb.postsCollection.doc(post.id).update({
-        likes: post.likesCount + 1
-      })
-    }
+    },
 
   }
 })
