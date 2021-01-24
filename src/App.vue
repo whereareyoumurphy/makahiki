@@ -1,7 +1,7 @@
 <template>
   <div id="app">
     <SiteNav v-if="showNav"></SiteNav>
-    <router-view/>
+    <router-view :key="$route.fullPath" />
   </div>
 </template>
 

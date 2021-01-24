@@ -32,7 +32,7 @@
 <script>
 import { mapState } from 'vuex'
 import { Datetime } from 'vue-datetime'
-import DatesUtilities from '@/utilities/dates.js'
+import DatesUtilities from '@/utilities/DatesUtilities.js'
 
 export default {
   components: {

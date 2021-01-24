@@ -2,7 +2,10 @@ import Vue from 'vue'
 import Vuex from 'vuex'
 import * as fb from '../firebase'
 import router from '../router/index'
-import DatesUtilities from '@/utilities/dates.js'
+import DatesUtilities from '@/utilities/DatesUtilities.js'
+import MonthStatistics from '@/utilities/MonthStatistics.js'
+import YearStatistics from '@/utilities/YearStatistics.js'
+import { months } from 'moment'
 
 Vue.use(Vuex)
 
@@ -25,14 +28,17 @@ var incomingCategoriesListenerUnsubscribe = function () {};
 var outgoingCategoriesListenerUnsubscribe = function () {};
 var yearsListenerUnsubscribe = function () {};
 
-
 const store = new Vuex.Store({
   state: {
     userProfile: {},
     posts: [],
     years: [],
     incomingCategories: [],
-    outgoingCategories: []
+    outgoingCategories: [],
+
+    currentYear: { isLoading: false, months: [], statistics: {} },
+    currentMonth: { isLoading: false }
+
   },
   mutations: {
     setUserProfile(state, val) {
@@ -52,7 +58,20 @@ const store = new Vuex.Store({
     },
     setYears(state, val) {
       state.years = val
+    },
+    setCurrentYear(state, val) {
+      state.currentYear = val
+    },
+    setCurrentYearLoading(state, val){ 
+      state.currentYear.isLoading = val;
+    },
+    setCurrentYearMonths(state, val){ 
+      state.currentYear.months = val;
+    },
+    setCurrentYearStatistics(state, val){ 
+      state.currentYear.statistics = val;
     }
+
   },
   actions: {
 
@@ -312,7 +331,7 @@ const store = new Vuex.Store({
           .collection(transaction.transactionType).add({
             date: transaction.date,
             categoryId: transaction.categoryId,
-            amount: transaction.amount,
+            amount: parseFloat(transaction.amount),
             note: '' +  transaction.note
           })
 
@@ -339,12 +358,77 @@ const store = new Vuex.Store({
           yearsArray.push(year)
         })
 
-        console.log('fetchUserYears', yearsArray);
-
         store.commit('setYears', yearsArray)
       })
 
     },
+
+    async clearCurrentYear({ commit }, yearId) {
+
+      store.commit('setCurrentYear', { isLoading: false, months: [], statistics: {} })
+
+    },
+
+    async fetchCurrentYear({ state, commit }, yearId) {
+
+      //
+      store.commit('setCurrentYearLoading', true)
+      
+      const userId = fb.auth.currentUser.uid
+
+      // create a listener
+      const snapshot = await fb.usersCollection.doc(userId)
+        .collection('years')
+        .doc(yearId)
+        .collection('months')
+        .get()
+
+      let monthsArray = []
+
+      snapshot.forEach(async doc => {
+        let month = doc.data()
+        month.id = doc.id
+
+        const incoming = await doc.ref.collection('incoming-transactions').get()
+        const outgoing = await doc.ref.collection('outgoing-transactions').get()
+
+        month.incomingTransactions = []
+        month.outgoingTransactions = []
+
+        incoming.forEach(async doc => {
+
+          let transaction = doc.data()
+          transaction.id = doc.id
+
+          month.incomingTransactions.push(transaction)
+
+        })
+
+        outgoing.forEach(async doc => {
+
+          let transaction = doc.data()
+          transaction.id = doc.id
+
+          month.outgoingTransactions.push(transaction)
+
+        })
+
+        // Run stats on month
+        const monthStatistics = MonthStatistics.calculate(month, state.incomingCategories, state.outgoingCategories)
+        month.statistics = monthStatistics;
+
+        monthsArray.push(month)
+
+      })
+
+      store.commit('setCurrentYearMonths', monthsArray)
+
+      // Run stats on year
+      const yearStatistics = YearStatistics.calculate(monthsArray) 
+      store.commit('setCurrentYearStatistics', yearStatistics)
+      store.commit('setCurrentYearLoading', false)
+
+    }
 
   }
 })

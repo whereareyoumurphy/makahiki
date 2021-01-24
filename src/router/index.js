@@ -42,7 +42,24 @@ const routes = [
     meta: {
       requiresAuth: true
     }
+  },
+  {
+    path: '/year/:year',
+    name: 'years',
+    component: () => import( /* webpackChunkName: "settings" */ '../views/Year.vue'),
+    meta: {
+      requiresAuth: true
+    }
+  },
+  {
+    path: '/month/:year/:month',
+    name: 'months',
+    component: () => import( /* webpackChunkName: "settings" */ '../views/Month.vue'),
+    meta: {
+      requiresAuth: true
+    }
   }
+
 ]
 
 const router = new VueRouter({
